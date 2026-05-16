@@ -43,12 +43,13 @@ void yyerror(const char *msg);
                   FuncFParam Block BlockItem Stmt
                   Exp Cond LVal PrimaryExp UnaryExp
                   MulExp AddExp RelExp EqExp LAndExp LOrExp
-                  ConstExp FuncType
+                  ConstExp
                   ForStmt ExpOrEmpty CondOrEmpty
+                  ExpList ConstExpList
 
 %type  <list>     ConstDefList VarDefList ConstInitValList
                   InitValList FuncFParams FuncRParams
-                  BlockItemList ExpList ConstExpList
+                  BlockItemList
 
 %start CompUnit
 
@@ -63,16 +64,18 @@ CompUnit
         {
             ASTNode *arr[2] = { $1, ast_ext_decl($2) };
             $$ = ast_compound(arr, 2);
+            ast_root = $$;
         }
     | CompUnit FuncDef
         {
             ASTNode *arr[2] = { $1, $2 };
             $$ = ast_compound(arr, 2);
+            ast_root = $$;
         }
     | Decl
-        { $$ = ast_ext_decl($1); }
+        { $$ = ast_ext_decl($1); ast_root = $$; }
     | FuncDef
-        { $$ = $1; }
+        { $$ = $1; ast_root = $$; }
     ;
 
 /* ==================== */
@@ -89,8 +92,9 @@ Decl
 ConstDecl
     : CONST BType ConstDefList ';'
         {
-            ASTNode *typeNode = $2;
-            $$ = ast_decl(&typeNode, 1, $3.items, $3.count);
+            ASTNode **specs = (ASTNode**)malloc(sizeof(ASTNode*));
+            specs[0] = $2;
+            $$ = ast_decl(specs, 1, $3.items, $3.count);
         }
     ;
 
@@ -114,6 +118,8 @@ BType
         { $$ = ast_type_name("int"); }
     | FLOAT
         { $$ = ast_type_name("float"); }
+    | VOID
+        { $$ = ast_type_name("void"); }
     ;
 
 ConstDef
@@ -160,8 +166,9 @@ ConstInitValList
 VarDecl
     : BType VarDefList ';'
         {
-            ASTNode *typeNode = $1;
-            $$ = ast_decl(&typeNode, 1, $2.items, $2.count);
+            ASTNode **specs = (ASTNode**)malloc(sizeof(ASTNode*));
+            specs[0] = $1;
+            $$ = ast_decl(specs, 1, $2.items, $2.count);
         }
     ;
 
@@ -216,22 +223,13 @@ InitValList
 /* ==================== */
 
 FuncDef
-    : FuncType IDENTIFIER '(' FuncFParams ')' Block
+    : BType IDENTIFIER '(' FuncFParams ')' Block
         {
             ASTNode *plist = ast_param_list($4.items, $4.count);
             $$ = ast_func_type($2, plist, $1, $6);
         }
-    | FuncType IDENTIFIER '(' ')' Block
+    | BType IDENTIFIER '(' ')' Block
         { $$ = ast_func_type($2, NULL, $1, $5); }
-    ;
-
-FuncType
-    : VOID
-        { $$ = ast_type_name("void"); }
-    | INT
-        { $$ = ast_type_name("int"); }
-    | FLOAT
-        { $$ = ast_type_name("float"); }
     ;
 
 FuncFParams
@@ -317,6 +315,15 @@ Stmt
         { $$ = ast_do_while($2, $5); }
     | FOR '(' ForStmt ';' CondOrEmpty ';' ForStmt ')' Stmt
         { $$ = ast_for($3, $5, $7, $9); }
+    | FOR '(' BType VarDef ';' CondOrEmpty ';' ForStmt ')' Stmt
+        {
+            ASTNode **specs = (ASTNode**)malloc(sizeof(ASTNode*));
+            specs[0] = $3;
+            ASTNode **inits = (ASTNode**)malloc(sizeof(ASTNode*));
+            inits[0] = $4;
+            ASTNode *decl = ast_decl(specs, 1, inits, 1);
+            $$ = ast_for(decl, $6, $8, $10);
+        }
     | BREAK ';'
         { $$ = ast_break(); }
     | CONTINUE ';'

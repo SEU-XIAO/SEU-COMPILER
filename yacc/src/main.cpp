@@ -11,18 +11,20 @@
 
 using namespace std;
 
+static int printToStdout(const char* fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	vprintf(fmt, args);
+	va_end(args);
+	return 0;
+}
+
 int main(int argc, char* argv[]) {
 
 	const char* inputFile = (argc > 1) ? argv[1] : "SysY.y";
 	YaccParser yyy(inputFile);
 
-	dumpProducers([](const char* fmt, ...) {
-		va_list args;
-		va_start(args, fmt);
-		vprintf(fmt, args);
-		va_end(args);
-		return 0;
-		});
+	dumpProducers(printToStdout);
 
 	//printf("%s\n", YyWrite::make_init().c_str());
 
@@ -36,7 +38,7 @@ int main(int argc, char* argv[]) {
 	//lrt.dump(printf);
 	//printf("%s", lrt.code_dump("state", "c").c_str());
 
-	freopen("y.tab.c", "w", stdout);
+	(void)freopen("y.tab.c", "w", stdout);
 
 	printf("%s\n", yacc_program.c_str());
 	printf("void init_producers() { %s }\n", YyWrite::make_init().c_str());

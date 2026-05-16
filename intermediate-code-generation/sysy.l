@@ -37,7 +37,6 @@ L	[a-zA-Z_]
 "<<"    { count(); return(LEFT_OP); }
 "++"    { count(); return(INC_OP); }
 "--"    { count(); return(DEC_OP); }
-"->"    { count(); return(PTR_OP); }
 "&&"    { count(); return(AND_OP); }
 "||"    { count(); return(OR_OP); }
 "<="    { count(); return(LE_OP); }

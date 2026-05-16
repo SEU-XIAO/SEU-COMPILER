@@ -269,28 +269,39 @@ llvm::Value* CompoundNode::codegen(llvm::IRBuilder<> &builder, llvm::Module &mod
 llvm::Value* DeclNode::codegen(llvm::IRBuilder<> &builder, llvm::Module &module) {
     // 简化处理，假设声明的是 int 类型的变量
     llvm::Type *varType = llvm::Type::getInt32Ty(builder.getContext());
-    
+
+    // 检查是否在函数内部（全局作用域不能用 alloca）
+    bool isGlobalScope = !builder.GetInsertBlock();
+
     for (int i = 0; i < seq.count; i++) {
         // 获取初始化声明节点
         InitDeclNode *initDecl = static_cast<InitDeclNode*>(seq.list[i]);
         if (!initDecl) continue;
-        
+
         // 获取变量名
         VarNode *varNode = static_cast<VarNode*>(initDecl->init_decl.decl);
         if (!varNode) continue;
         std::string varName = varNode->varname;
-        
-        // 为变量分配内存
-        llvm::Value *alloca = builder.CreateAlloca(varType, nullptr, varName);
-        
-        // 将变量添加到符号表
-        symbolTable[varName] = alloca;
-        
-        // 生成初始化代码
-        if (initDecl->init_decl.init) {
-            llvm::Value *initValue = initDecl->init_decl.init->codegen(builder, module);
-            if (initValue) {
-                builder.CreateStore(initValue, alloca);
+
+        if (isGlobalScope) {
+            // 全局变量：创建全局变量定义
+            llvm::GlobalVariable *gv = new llvm::GlobalVariable(
+                module, varType, false,
+                llvm::GlobalValue::ExternalLinkage,
+                llvm::ConstantInt::get(varType, 0),
+                varName);
+            symbolTable[varName] = gv;
+        } else {
+            // 局部变量：使用 alloca
+            llvm::Value *alloca = builder.CreateAlloca(varType, nullptr, varName);
+            symbolTable[varName] = alloca;
+
+            // 生成初始化代码
+            if (initDecl->init_decl.init) {
+                llvm::Value *initValue = initDecl->init_decl.init->codegen(builder, module);
+                if (initValue) {
+                    builder.CreateStore(initValue, alloca);
+                }
             }
         }
     }
@@ -326,28 +337,54 @@ llvm::Value* ArrayNode::codegen(llvm::IRBuilder<> &builder, llvm::Module &module
 llvm::Value* FuncTypeNode::codegen(llvm::IRBuilder<> &builder, llvm::Module &module) {
     // 简化处理，假设返回类型为 int
     llvm::Type *returnType = llvm::Type::getInt32Ty(builder.getContext());
-    
-    // 简化处理，假设参数列表为空
+
+    // 收集参数类型和名称
     std::vector<llvm::Type*> paramTypes;
+    std::vector<std::string> paramNames;
+    if (ft.params && ft.params->type == AST_PARAM_LIST) {
+        ParamListNode *plist = static_cast<ParamListNode*>(ft.params);
+        for (int i = 0; i < plist->seq.count; i++) {
+            paramTypes.push_back(llvm::Type::getInt32Ty(builder.getContext()));
+            ParamNode *p = static_cast<ParamNode*>(plist->seq.list[i]);
+            if (p && p->param.decl && p->param.decl->type == AST_VAR) {
+                paramNames.push_back(static_cast<VarNode*>(p->param.decl)->varname);
+            } else {
+                paramNames.push_back("");
+            }
+        }
+    }
+
     llvm::FunctionType *funcType = llvm::FunctionType::get(returnType, paramTypes, false);
-    
+
     // 创建函数
     llvm::Function *func = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, varname, module);
-    
-    // 创建基本块
+
+    // 为参数命名并创建 alloca
     llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(builder.getContext(), "entry", func);
     builder.SetInsertPoint(entryBB);
-    
+
+    unsigned idx = 0;
+    for (auto &arg : func->args()) {
+        if (idx < paramNames.size()) {
+            arg.setName(paramNames[idx]);
+            // 为参数创建 alloca 并存储
+            llvm::AllocaInst *alloca = builder.CreateAlloca(llvm::Type::getInt32Ty(builder.getContext()), nullptr, paramNames[idx]);
+            builder.CreateStore(&arg, alloca);
+            symbolTable[paramNames[idx]] = alloca;
+        }
+        idx++;
+    }
+
     // 生成函数体代码
     if (ft.body) {
         ft.body->codegen(builder, module);
     }
-    
+
     // 如果没有显式的 return 语句，添加一个默认的 return 0
     if (!builder.GetInsertBlock()->getTerminator()) {
         builder.CreateRet(llvm::ConstantInt::get(returnType, 0));
     }
-    
+
     return func;
 }
 

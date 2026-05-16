@@ -238,10 +238,11 @@ public:
 class CompoundNode : public ASTNode {
 public:
     CompoundNode(ASTNode **list, int count) : ASTNode(AST_COMPOUND) {
-        seq.list = list;
+        seq.list = (ASTNode**)malloc(sizeof(ASTNode*) * count);
+        for (int i = 0; i < count; i++) seq.list[i] = list[i];
         seq.count = count;
     }
-    
+
     llvm::Value* codegen(llvm::IRBuilder<> &builder, llvm::Module &module) override;
 };
 
