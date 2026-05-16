@@ -1,0 +1,5 @@
+*.o
+*.exe
+seuYacc
+y.tab.c
+y.tab.h
